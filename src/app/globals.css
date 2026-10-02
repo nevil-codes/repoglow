@@ -1,26 +1,134 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #f7f7fb;
+  --fg: #0f1020;
+  --muted: #5b5d78;
+  --card: rgb(255 255 255 / 0.7);
+  --card-border: rgb(15 16 32 / 0.08);
+  --input: rgb(255 255 255 / 0.9);
+  --accent-1: #7c3aed;
+  --accent-2: #ec4899;
+  --accent-3: #06b6d4;
+  --glow-opacity: 0.35;
+}
+
+.dark {
+  --bg: #07070d;
+  --fg: #ecedf7;
+  --muted: #9a9cb8;
+  --card: rgb(20 20 34 / 0.6);
+  --card-border: rgb(255 255 255 / 0.08);
+  --input: rgb(10 10 20 / 0.7);
+  --glow-opacity: 0.55;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-input: var(--input);
+  --color-accent-1: var(--accent-1);
+  --color-accent-2: var(--accent-2);
+  --color-accent-3: var(--accent-3);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  overflow-x: clip;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Aurora glow behind everything */
+.aurora {
+  position: fixed;
+  inset: -20%;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--glow-opacity);
+  background:
+    radial-gradient(40% 35% at 20% 15%, var(--accent-1), transparent 70%),
+    radial-gradient(35% 30% at 80% 10%, var(--accent-2), transparent 70%),
+    radial-gradient(40% 35% at 60% 85%, var(--accent-3), transparent 70%);
+  filter: blur(60px);
+  animation: drift 22s ease-in-out infinite alternate;
+}
+
+.grid-fade {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--card-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--card-border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at top, black 20%, transparent 70%);
+}
+
+@keyframes drift {
+  from { transform: translate3d(0, 0, 0) rotate(0deg); }
+  to { transform: translate3d(3%, -2%, 0) rotate(6deg); }
+}
+
+.text-gradient {
+  background: linear-gradient(90deg, var(--accent-1), var(--accent-2), var(--accent-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.btn-glow {
+  background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+  box-shadow: 0 8px 30px -8px var(--accent-2);
+}
+
+.shimmer {
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.25), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora, .shimmer { animation: none; }
+}
+
+/* Rendered README preview — GitHub-ish markdown */
+.markdown { line-height: 1.7; font-size: 0.95rem; overflow-wrap: anywhere; }
+.markdown h1 { font-size: 2rem; font-weight: 700; margin: 1.2em 0 0.5em; padding-bottom: 0.3em; border-bottom: 1px solid var(--card-border); }
+.markdown h2 { font-size: 1.45rem; font-weight: 650; margin: 1.4em 0 0.5em; padding-bottom: 0.3em; border-bottom: 1px solid var(--card-border); }
+.markdown h3 { font-size: 1.15rem; font-weight: 600; margin: 1.2em 0 0.4em; }
+.markdown p, .markdown ul, .markdown ol, .markdown table, .markdown pre, .markdown blockquote, .markdown details { margin: 0.75em 0; }
+.markdown ul { list-style: disc; padding-left: 1.5em; }
+.markdown ol { list-style: decimal; padding-left: 1.5em; }
+.markdown li > input[type="checkbox"] { margin-right: 0.4em; }
+.markdown a { color: var(--accent-1); text-decoration: underline; text-underline-offset: 2px; }
+.dark .markdown a { color: #a78bfa; }
+.markdown code { font-family: var(--font-mono); font-size: 0.85em; background: var(--card-border); padding: 0.15em 0.4em; border-radius: 6px; }
+.markdown pre { background: rgb(0 0 0 / 0.06); border: 1px solid var(--card-border); border-radius: 10px; padding: 1em; overflow-x: auto; }
+.dark .markdown pre { background: rgb(0 0 0 / 0.35); }
+.markdown pre code { background: none; padding: 0; }
+.markdown table { display: block; overflow-x: auto; border-collapse: collapse; }
+.markdown th, .markdown td { border: 1px solid var(--card-border); padding: 0.4em 0.8em; }
+.markdown th { font-weight: 600; }
+.markdown blockquote { border-left: 3px solid var(--accent-1); padding-left: 1em; color: var(--muted); }
+.markdown img { display: inline-block; max-width: 100%; }
+.markdown hr { border-color: var(--card-border); margin: 1.5em 0; }
+.markdown [align="center"] { text-align: center; }
+.markdown summary { cursor: pointer; font-weight: 600; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
 }
