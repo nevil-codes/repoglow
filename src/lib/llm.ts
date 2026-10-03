@@ -3,7 +3,9 @@ import { z } from "zod";
 import type { RepoDigest } from "./github";
 import { buildContext, META_TASK, readmeTask, SYSTEM_PROMPT } from "./prompt";
 import { buildBadges, finalizeReadme } from "./readme";
+import { filterPackages } from "./stack";
 import { PolishMeta, type GenerateRequest, type RepoPolish } from "./schema";
+import type { GenerateEvent } from "./events";
 
 export class GenerationError extends Error {
   constructor(
@@ -18,6 +20,8 @@ const HOST = process.env.OLLAMA_HOST || "http://127.0.0.1:11434";
 const MODEL = process.env.OLLAMA_MODEL || "gpt-oss:20b";
 // Ollama's default context is small and silently truncates long prompts; the repo digest needs room.
 const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX) || 32768;
+// Keep the model loaded between requests; reloading a 13 GB model adds 10-30s.
+const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || "30m";
 
 const ollama = new Ollama({ host: HOST });
 const META_FORMAT = z.toJSONSchema(PolishMeta);
@@ -27,31 +31,48 @@ const META_FORMAT = z.toJSONSchema(PolishMeta);
  * markdown. Splitting keeps the README out of a JSON string (where local
  * models write worse markdown) and gives each call its own output budget.
  */
-export async function generatePolish(req: GenerateRequest, digest?: RepoDigest): Promise<RepoPolish> {
+export async function generatePolish(
+  req: GenerateRequest,
+  digest?: RepoDigest,
+  emit: (e: GenerateEvent) => void = () => {},
+  signal?: AbortSignal,
+): Promise<RepoPolish> {
   const context = buildContext(req, digest?.text);
-  const meta = normalize(await generateMeta(context));
+  emit({ type: "stage", stage: "meta" });
+  const generated = normalize(await generateMeta(context, signal));
+  const meta = digest
+    ? { ...generated, packages: filterPackages(generated.packages, digest.facts.dependencies, digest.facts.tooling) }
+    : generated;
+
+  const badges = buildBadges(digest?.facts, meta.badges, digest ? digest.manifestText : (req.description ?? ""));
+  const withBadges = { ...meta, badges };
+  emit({ type: "meta", meta: withBadges });
 
   const title = digest?.facts.repo ?? meta.names[0]?.name ?? "my-project";
-  const rawReadme = await chat([{ role: "user", content: `${context}\n\n${readmeTask(meta, title)}` }]);
+  const finalize = (raw: string) =>
+    finalizeReadme(raw, { badges: req.options.badges ? badges : null, toc: req.options.toc, facts: digest?.facts, name: title });
+
+  emit({ type: "stage", stage: "readme" });
+  let lastSent = 0;
+  const rawReadme = await chat([{ role: "user", content: `${context}\n\n${readmeTask(meta, title)}` }], undefined, signal, (soFar) => {
+    // Throttled full snapshots: cheap to render, and the client never has to re-run post-processing.
+    if (Date.now() - lastSent < 250) return;
+    lastSent = Date.now();
+    emit({ type: "readme", markdown: finalize(soFar) });
+  });
   if (!rawReadme.trim()) throw new GenerationError(`${MODEL} returned an empty README. Please try again.`, 502);
 
-  const badges = buildBadges(digest?.facts, meta.badges);
-  const readme = finalizeReadme(rawReadme, {
-    badges: req.options.badges ? badges : null,
-    toc: req.options.toc,
-    facts: digest?.facts,
-    name: title,
-  });
-
-  return { ...meta, badges, readme };
+  const readme = finalize(rawReadme);
+  emit({ type: "readme", markdown: readme });
+  return { ...withBadges, readme };
 }
 
-async function generateMeta(context: string): Promise<PolishMeta> {
+async function generateMeta(context: string, signal?: AbortSignal): Promise<PolishMeta> {
   // Local models occasionally emit schema-valid JSON that fails Zod checks; one retry fixes most of it.
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const out = await chat([{ role: "user", content: `${context}\n\n${META_TASK}` }], META_FORMAT);
+      const out = await chat([{ role: "user", content: `${context}\n\n${META_TASK}` }], META_FORMAT, signal);
       return PolishMeta.parse(JSON.parse(out));
     } catch (err) {
       if (err instanceof GenerationError) throw err;
@@ -62,29 +83,44 @@ async function generateMeta(context: string): Promise<PolishMeta> {
   throw new GenerationError(`${MODEL} returned output that didn't match the expected format. Try again or use a larger model.`, 502);
 }
 
-async function chat(messages: Message[], format?: object): Promise<string> {
+async function chat(
+  messages: Message[],
+  format?: object,
+  signal?: AbortSignal,
+  onText?: (soFar: string) => void,
+): Promise<string> {
+  if (signal?.aborted) throw new GenerationError("Request cancelled.", 499);
   try {
     // Streamed so slow local generations don't hit fetch header timeouts.
     const stream = await ollama.chat({
       model: MODEL,
       stream: true,
       format,
+      keep_alive: KEEP_ALIVE,
       options: { num_ctx: NUM_CTX, temperature: 0.7 },
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
     });
+
+    // Stop the local model when the client goes away instead of burning GPU on an unread answer.
+    const stop = () => stream.abort();
+    signal?.addEventListener("abort", stop, { once: true });
 
     let out = "";
     let doneReason = "";
     for await (const part of stream) {
       out += part.message.content;
+      if (part.message.content) onText?.(out);
       if (part.done) doneReason = part.done_reason;
     }
+    signal?.removeEventListener("abort", stop);
+    if (signal?.aborted) throw new GenerationError("Request cancelled.", 499);
     if (doneReason === "length") {
       throw new GenerationError("Output hit the model's length limit. Raise OLLAMA_NUM_CTX or turn off some README options.", 502);
     }
     return out;
   } catch (err) {
     if (err instanceof GenerationError) throw err;
+    if (signal?.aborted) throw new GenerationError("Request cancelled.", 499);
     const message = err instanceof Error ? err.message : String(err);
     const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : "";
     if (/ECONNREFUSED|fetch failed/i.test(message + cause)) {

@@ -6,17 +6,20 @@ export const RepoPolish = z.object({
   names: z
     .array(
       z.object({
-        name: z.string().describe("Repo-safe name, lowercase-kebab-case"),
-        why: z.string().describe("One sentence on why it works"),
+        name: z.string().min(2).describe("Repo-safe name, lowercase-kebab-case"),
+        why: z.string().min(5).describe("One sentence on why it works"),
       }),
     )
+    .min(3)
     .describe("5 catchy, memorable, available-sounding repo names"),
-  tagline: z.string().describe("Punchy one-liner, max ~80 chars"),
+  tagline: z.string().min(10).describe("Punchy one-liner, max ~80 chars"),
   aboutDescription: z
     .string()
+    .min(20)
     .describe("GitHub 'About' description, max 350 chars, may start with one emoji"),
   topics: z
-    .array(z.string())
+    .array(z.string().min(2))
+    .min(5)
     .describe("8-20 GitHub topics: lowercase, hyphenated, no spaces, max 50 chars each"),
   packages: z
     .array(
@@ -27,6 +30,7 @@ export const RepoPolish = z.object({
         installCmd: z.string(),
       }),
     )
+    .min(2)
     .describe("Packages worth adding to improve quality, DX, or features"),
   badges: z
     .array(
@@ -45,11 +49,12 @@ export const RepoPolish = z.object({
         impact: z.enum(["high", "medium", "low"]),
       }),
     )
+    .min(2)
     .describe("Quick wins to make the repo stand out"),
   scorecard: z.object({
     current: z.number().describe("0-100 appeal score of repo as it is now (50 for idea mode)"),
     potential: z.number().describe("0-100 score after applying suggestions"),
-    notes: z.string().describe("One or two sentences explaining the scores"),
+    notes: z.string().min(5).describe("One or two sentences explaining the scores"),
   }),
 });
 

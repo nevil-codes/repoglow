@@ -8,8 +8,11 @@ export const TOC_TOKEN = "{{TOC}}";
 
 const STYLE = "style=for-the-badge";
 
-/** Badges derived from real repo facts, plus the model's static tech-stack badges. */
-export function buildBadges(facts: RepoFacts | undefined, modelBadges: RepoPolish["badges"]): RepoPolish["badges"] {
+/**
+ * Badges derived from real repo facts, plus the model's static tech-stack badges.
+ * `evidence` (manifests, or the idea text) must back up any version a model badge claims.
+ */
+export function buildBadges(facts: RepoFacts | undefined, modelBadges: RepoPolish["badges"], evidence = ""): RepoPolish["badges"] {
   const out: RepoPolish["badges"] = [];
   if (facts) {
     const slug = `${facts.owner}/${facts.repo}`;
@@ -31,7 +34,7 @@ export function buildBadges(facts: RepoFacts | undefined, modelBadges: RepoPolis
   const seen = new Set(out.map((b) => b.label.toLowerCase()));
   for (const b of modelBadges) {
     const ok = /https:\/\/img\.shields\.io\/badge\//.test(b.markdown) && !/[<>]|your-|owner\/repo/i.test(b.markdown);
-    if (!ok || seen.has(b.label.toLowerCase())) continue;
+    if (!ok || seen.has(b.label.toLowerCase()) || !versionBacked(b.markdown, evidence)) continue;
     seen.add(b.label.toLowerCase());
     out.push({ label: b.label, markdown: b.markdown.replace(/\((https:\/\/img\.shields\.io\/badge\/[^)\s]+)\)/, (_, url: string) => `(${withStyle(url)})`) });
   }
@@ -48,6 +51,8 @@ export function finalizeReadme(
   // Whole README wrapped in a code fence.
   const fenced = md.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```\s*$/i);
   if (fenced) md = fenced[1].trim();
+  // ...or still being streamed, so the closing fence hasn't arrived yet.
+  else md = md.replace(/^```(?:markdown|md)\s*\n/i, "");
 
   // "# <div align="center">Title" -> "# Title" (and drop the now-unmatched </div>).
   let removedDivs = 0;
@@ -88,7 +93,8 @@ export function finalizeReadme(
   }
   md = md.replaceAll(BADGES_TOKEN, "");
 
-  // Table of contents
+  // Table of contents. Unwrap the token if the model put it in its own <details> (renders as an unlabeled "Details" box).
+  md = md.replace(/<details>\s*(?:<summary>[\s\S]*?<\/summary>)?\s*\{\{TOC\}\}\s*<\/details>/g, TOC_TOKEN);
   md = removeModelToc(md);
   if (opts.toc) {
     const toc = buildToc(md);
@@ -171,6 +177,27 @@ function buildToc(md: string) {
     return `- [${text}](#${n ? `${base}-${n}` : base})`;
   });
   return `<details>\n<summary><b>Table of contents</b></summary>\n\n${items.join("\n")}\n\n</details>`;
+}
+
+/** A static badge like /badge/node-%3E%3D22-green claims "22"; keep it only if the evidence mentions that version. */
+function versionBacked(markdown: string, evidence: string) {
+  const path = markdown.match(/img\.shields\.io\/badge\/([^?)\s]+)/)?.[1];
+  if (!path) return true;
+  let text: string;
+  try {
+    text = decodeURIComponent(path.replace(/\.svg$/, "")).replace(/--/g, "\u0000").replace(/_/g, " ");
+  } catch {
+    return true;
+  }
+  // label-message-color (or message-color): the color is never a version, so drop it.
+  const parts = text.split("-").map((s) => s.replace(/\u0000/g, "-"));
+  const claim = parts.slice(0, -1).join(" ");
+  const versions = claim.match(/\d+(?:\.[\dx*]+)*/g);
+  if (!versions) return true;
+  return versions.every((v) => {
+    const major = v.split(".")[0];
+    return new RegExp(`(^|[^\\d.])${major}(\\.|[^\\d]|$)`).test(evidence);
+  });
 }
 
 function withStyle(url: string) {

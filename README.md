@@ -46,9 +46,11 @@ RepoGlow reads your actual code (file tree, manifests, entry points, existing RE
 | 📦 | **Package picks** | Stack-aware libraries for testing, DX and features — with install commands |
 | ✅ | **Quick wins** | Prioritized checklist: license, CI, templates, social preview, releases… |
 | 📊 | **Appeal score** | Before → after score so you know what moved the needle |
+| ⚡ | **Live streaming** | Names, topics and packages appear first, then watch the README being written |
+| 🔍 | **Fact-checked** | Badges, versions and package picks are verified against your real manifests — no suggesting Jest when you use node:test |
 | 🎨 | **Tone & style** | Professional · Playful · Minimal · Bold, plus toggles for emoji, TOC and Mermaid diagrams |
 
-Everything is one click to copy, and the README downloads as `README.md`.
+Everything is one click to copy, the README downloads as `README.md`, and the preview renders HTML (centered heroes, collapsible sections) the same way GitHub does.
 
 ## 🧠 How it works
 
@@ -67,8 +69,10 @@ flowchart LR
 
 1. **Digest** — `src/lib/github.ts` pulls repo metadata, languages, file tree, existing README, manifests (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, …) and a size-budgeted sample of entry-point source files.
 2. **Generate** — `src/lib/llm.ts` makes two calls to your local Ollama model sharing one cached prompt prefix: names/about/topics/packages as schema-constrained JSON, then the README as plain markdown (local models write much better markdown outside a JSON string).
-3. **Post-process** — `src/lib/readme.ts` builds badges from real repo facts (npm/PyPI/crates name, license, CI workflow), generates a table of contents with GitHub anchors, and fixes common local-model mistakes (code-fenced READMEs, HTML in headings, invented badge paths, `<owner>` placeholders).
-4. **Polish** — the UI renders the README preview, names, topics, badges, packages and checklist.
+3. **Fact-check** — `src/lib/stack.ts` reads dependencies from `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `Gemfile` and `composer.json`, detects existing tooling (test runner, linter, framework…), and drops package suggestions the project already has or that would replace it. Version badges are kept only if the manifests back them up.
+4. **Post-process** — `src/lib/readme.ts` builds badges from real repo facts (npm/PyPI/crates name, license, CI workflow), generates a table of contents with GitHub anchors, and fixes common local-model mistakes (code-fenced READMEs, HTML in headings, invented badge paths, `<owner>` placeholders).
+5. **Stream** — the API streams NDJSON events (stage → metadata → live README snapshots → done), so results show up as soon as each part is ready.
+6. **Polish** — the UI renders the README preview, names, topics, badges, packages and checklist.
 
 ## ⚡ Quick start
 
@@ -95,6 +99,7 @@ Open [http://localhost:3000](http://localhost:3000) and paste a repo URL.
 | `OLLAMA_HOST` | — | Ollama server URL (default `http://127.0.0.1:11434`) |
 | `OLLAMA_MODEL` | — | Model to use (default `gpt-oss:20b`) |
 | `OLLAMA_NUM_CTX` | — | Context window in tokens (default `32768`). Lower it if you run out of memory |
+| `OLLAMA_KEEP_ALIVE` | — | How long the model stays loaded after a request (default `30m`) |
 | `GITHUB_TOKEN` | — | Raises GitHub rate limit from 60 to 5,000 req/h. A fine-grained token with no extra scopes is enough |
 
 > [!TIP]
@@ -108,7 +113,7 @@ Open [http://localhost:3000](http://localhost:3000) and paste a repo URL.
 ```
 src/
 ├── app/
-│   ├── api/generate/route.ts   # POST endpoint: validate → digest → Ollama
+│   ├── api/generate/route.ts   # Streaming POST endpoint: validate → digest → Ollama → NDJSON
 │   ├── page.tsx                # Landing page + generator form
 │   ├── layout.tsx              # Fonts, theme bootstrap, aurora background
 │   └── globals.css             # Design tokens, glass + glow styles, markdown preview
@@ -120,6 +125,8 @@ src/
     ├── prompt.ts               # Shared system prompt (+ example README), context, task prompts
     ├── llm.ts                  # Two-call Ollama pipeline, JSON-schema output, error mapping
     ├── readme.ts               # Badge builder, TOC generator, README cleanup
+    ├── stack.ts                # Dependency parsing, tooling detection, package filtering
+    ├── events.ts               # Streaming event types shared by API and UI
     └── schema.ts               # Zod schemas for request + polish kit
 ```
 
@@ -136,7 +143,8 @@ src/
 - [x] README, names, About, topics, badges, packages, quick wins
 - [x] Tone presets and README style toggles
 - [x] Light / dark theme
-- [ ] Stream the README as it's written
+- [x] Live streaming of results
+- [x] Manifest-based fact checking for badges and packages
 - [ ] "Open PR with this README" via GitHub OAuth
 - [ ] Private repo support
 - [ ] Social preview image generator (1280×640)

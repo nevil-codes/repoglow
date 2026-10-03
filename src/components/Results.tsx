@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import type { RepoPolish } from "@/lib/schema";
 import { Card, CopyButton, Icon } from "./ui";
 
 const TABS = ["README", "Names", "About & Topics", "Packages", "Badges", "Quick wins"] as const;
 type Tab = (typeof TABS)[number];
 
-export function Results({ polish, repoName }: { polish: RepoPolish; repoName?: string }) {
+export function Results({ polish, repoName, streaming = false }: { polish: RepoPolish; repoName?: string; streaming?: boolean }) {
   const [tab, setTab] = useState<Tab>("README");
 
   return (
@@ -45,7 +47,7 @@ export function Results({ polish, repoName }: { polish: RepoPolish; repoName?: s
       </div>
 
       <div className="mt-4">
-        {tab === "README" && <ReadmePanel markdown={polish.readme} repoName={repoName} />}
+        {tab === "README" && <ReadmePanel markdown={polish.readme} repoName={repoName} streaming={streaming} />}
         {tab === "Names" && <NamesPanel names={polish.names} />}
         {tab === "About & Topics" && <AboutPanel about={polish.aboutDescription} topics={polish.topics} />}
         {tab === "Packages" && <PackagesPanel packages={polish.packages} />}
@@ -90,8 +92,15 @@ function Scorecard({ current, potential }: { current: number; potential: number 
   );
 }
 
-function ReadmePanel({ markdown, repoName }: { markdown: string; repoName?: string }) {
+function ReadmePanel({ markdown, repoName, streaming }: { markdown: string; repoName?: string; streaming: boolean }) {
   const [view, setView] = useState<"preview" | "raw">("preview");
+  const scrollRef = useRef<HTMLElement>(null);
+  // Follow the text while it's being written, unless the user scrolled up to read.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!streaming || !el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTop = el.scrollHeight;
+  }, [markdown, streaming]);
   const download = () => {
     const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown" }));
     const a = Object.assign(document.createElement("a"), { href: url, download: "README.md" });
@@ -103,6 +112,11 @@ function ReadmePanel({ markdown, repoName }: { markdown: string; repoName?: stri
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-card-border px-4 py-2.5">
         <div className="flex items-center gap-2 text-sm text-muted">
           <span className="font-mono">{repoName ? `${repoName}/` : ""}README.md</span>
+          {streaming && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-2/10 px-2 py-0.5 text-xs text-accent-2">
+              <span className="size-1.5 animate-pulse rounded-full bg-current" /> writing…
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-lg border border-card-border bg-input p-0.5 text-xs">
@@ -113,35 +127,56 @@ function ReadmePanel({ markdown, repoName }: { markdown: string; repoName?: stri
               </button>
             ))}
           </div>
-          <CopyButton text={markdown} />
-          <button onClick={download}
-            className="inline-flex items-center gap-1.5 rounded-lg btn-glow px-2.5 py-1 text-xs font-semibold text-white">
+          <CopyButton text={markdown} className={streaming ? "pointer-events-none opacity-50" : ""} />
+          <button onClick={download} disabled={streaming}
+            className="inline-flex items-center gap-1.5 rounded-lg btn-glow px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50">
             <Icon.download className="size-3.5" /> Download
           </button>
         </div>
       </div>
       {view === "preview" ? (
-        <article className="markdown max-h-[75vh] overflow-auto px-5 py-4 sm:px-8">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{withRawHtmlStripped(markdown)}</ReactMarkdown>
+        <article ref={scrollRef} className="markdown max-h-[75vh] overflow-auto px-5 py-4 sm:px-8">
+          {markdown ? (
+            <Markdown>{markdown}</Markdown>
+          ) : (
+            <ReadmeSkeleton />
+          )}
         </article>
       ) : (
-        <pre className="max-h-[75vh] overflow-auto whitespace-pre-wrap p-5 font-mono text-[13px] leading-relaxed">{markdown}</pre>
+        <pre ref={scrollRef as React.RefObject<HTMLPreElement>} className="max-h-[75vh] overflow-auto whitespace-pre-wrap p-5 font-mono text-[13px] leading-relaxed">{markdown}</pre>
       )}
     </Card>
   );
 }
 
-// react-markdown doesn't render raw HTML (safe by default); unwrap the common
-// <div align="center"> / <p align="center"> wrappers so their markdown still shows.
-function withRawHtmlStripped(md: string) {
-  return md
-    .replace(/<\/?(div|p)(\s+align="center")?\s*>/gi, "\n")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/?(details|summary)>/gi, "\n")
-    .replace(/<!--[\s\S]*?-->/g, "");
+function ReadmeSkeleton() {
+  return (
+    <div className="animate-pulse space-y-3 py-2" aria-label="Writing README">
+      <div className="mx-auto h-8 w-1/3 rounded-lg bg-card-border" />
+      <div className="mx-auto h-4 w-1/2 rounded bg-card-border" />
+      <div className="h-4 w-full rounded bg-card-border" />
+      <div className="h-4 w-5/6 rounded bg-card-border" />
+      <div className="h-4 w-2/3 rounded bg-card-border" />
+    </div>
+  );
+}
+
+// READMEs lean on raw HTML (centered <div>, <details>, <img>). Render it like GitHub
+// does: parse it, then sanitize with GitHub's own allowlist so nothing executes.
+function Markdown({ children }: { children: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]}>
+      {children}
+    </ReactMarkdown>
+  );
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return <Card className="p-8 text-center text-sm text-muted">{children}</Card>;
 }
 
 function NamesPanel({ names }: { names: RepoPolish["names"] }) {
+  if (!names.length) return <Empty>No name ideas this time — try generating again.</Empty>;
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {names.map((n, i) => (
@@ -193,6 +228,7 @@ function AboutPanel({ about, topics }: { about: string; topics: string[] }) {
 }
 
 function PackagesPanel({ packages }: { packages: RepoPolish["packages"] }) {
+  if (!packages.length) return <Empty>✅ Your stack already covers the essentials — no new packages to suggest.</Empty>;
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {packages.map((p) => (
@@ -221,7 +257,7 @@ function BadgesPanel({ badges }: { badges: RepoPolish["badges"] }) {
         <CopyButton text={all} label="Copy all" />
       </div>
       <div className="markdown mt-4 flex flex-wrap gap-2">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{all}</ReactMarkdown>
+        <Markdown>{all}</Markdown>
       </div>
       <ul className="mt-4 divide-y divide-card-border">
         {badges.map((b) => (
@@ -243,6 +279,7 @@ const IMPACT = {
 
 function WinsPanel({ items }: { items: RepoPolish["improvements"] }) {
   const [done, setDone] = useState<Set<number>>(new Set());
+  if (!items.length) return <Empty>🎉 No quick wins left — this repo is already in great shape.</Empty>;
   return (
     <Card className="divide-y divide-card-border">
       {items.map((it, i) => (

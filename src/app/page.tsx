@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { RepoPolish, Tone } from "@/lib/schema";
+import { useEffect, useRef, useState } from "react";
+import type { PolishMeta, Tone } from "@/lib/schema";
+import type { GenerateEvent, RepoInfo, Stage } from "@/lib/events";
 import { Results } from "@/components/Results";
 import { Card, Icon, ThemeToggle } from "@/components/ui";
 
 type Mode = "repo" | "idea";
-type Response = { polish: RepoPolish; repo: { fullName: string; url: string } | null };
+type Result = { meta: PolishMeta; readme: string; repo: RepoInfo | null; done: boolean };
 
 const TONES: { id: Tone; label: string; emoji: string }[] = [
   { id: "professional", label: "Professional", emoji: "💼" },
@@ -23,9 +24,16 @@ const OPTIONS = [
 ] as const;
 type OptionId = (typeof OPTIONS)[number]["id"];
 
-const STEPS: Record<Mode, string[]> = {
-  repo: ["Fetching repo tree", "Reading manifests & source", "Understanding the project", "Writing README", "Picking names, topics & badges"],
-  idea: ["Understanding your idea", "Designing the README", "Brainstorming names", "Picking topics & packages"],
+const STEPS: Record<Mode, { stage: Stage; label: string }[]> = {
+  repo: [
+    { stage: "digest", label: "Reading repo tree, manifests & source" },
+    { stage: "meta", label: "Picking names, topics, badges & packages" },
+    { stage: "readme", label: "Writing README" },
+  ],
+  idea: [
+    { stage: "meta", label: "Brainstorming names, topics & packages" },
+    { stage: "readme", label: "Writing README" },
+  ],
 };
 
 const EXAMPLES = {
@@ -43,38 +51,90 @@ export default function Home() {
   const [tone, setTone] = useState<Tone>("professional");
   const [opts, setOpts] = useState<Record<OptionId, boolean>>({ badges: true, emojis: true, toc: true, diagram: true });
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(0);
+  const [stage, setStage] = useState<Stage | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<Response | null>(null);
+  const [data, setData] = useState<Result | null>(null);
+  const [startedAt, setStartedAt] = useState(0);
+  const [now, setNow] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!loading) return;
-    const id = setInterval(() => setStep((s) => Math.min(s + 1, STEPS[mode].length - 1)), 7000);
+    const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [loading, mode]);
+  }, [loading]);
+
+  const steps = STEPS[mode];
+  const step = Math.max(0, steps.findIndex((s) => s.stage === stage));
+  const elapsed = loading && now > startedAt ? Math.round((now - startedAt) / 1000) : 0;
 
   const canSubmit = mode === "repo" ? repoUrl.trim().length > 0 : description.trim().length >= 10;
 
   async function generate(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || loading) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
-    setStep(0);
+    setStage(null);
     setError(null);
     setData(null);
+    setStartedAt(Date.now());
+    setNow(Date.now());
+
+    let repo: RepoInfo | null = null;
+    const handle = (ev: GenerateEvent) => {
+      switch (ev.type) {
+        case "stage":
+          setStage(ev.stage);
+          break;
+        case "repo":
+          repo = ev.repo;
+          break;
+        case "meta":
+          setData({ meta: ev.meta, readme: "", repo, done: false });
+          break;
+        case "readme":
+          setData((d) => (d ? { ...d, readme: ev.markdown } : d));
+          break;
+        case "done":
+          setData((d) => ({ meta: ev.polish, readme: ev.polish.readme, repo: d?.repo ?? repo, done: true }));
+          break;
+        case "error":
+          throw new Error(ev.error);
+      }
+    };
+
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode, repoUrl, description, tone, options: opts }),
+        signal: controller.signal,
       });
-      const json = await res.json().catch(() => ({ error: `Request failed (${res.status})` }));
-      if (!res.ok) throw new Error(json.error ?? "Something went wrong");
-      setData(json);
+      if (!res.ok || !res.body) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? `Request failed (${res.status})`);
+      }
+      // NDJSON: one event per line; a chunk can end mid-line.
+      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) if (line.trim()) handle(JSON.parse(line));
+      }
+      if (buffer.trim()) handle(JSON.parse(buffer));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      if (controller.signal.aborted) setError("Cancelled.");
+      else setError(err instanceof Error ? err.message : "Something went wrong");
+      setData((d) => (d ? { ...d, done: true } : d));
     } finally {
       setLoading(false);
+      abortRef.current = null;
     }
   }
 
@@ -177,13 +237,13 @@ export default function Home() {
             className="btn-glow relative mt-6 flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl py-3.5 font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
             {loading && <span className="shimmer absolute inset-0" />}
             <Icon.sparkle className={`size-4 ${loading ? "animate-spin" : ""}`} />
-            {loading ? STEPS[mode][step] + "…" : "Generate polish kit"}
+            {loading ? `${steps[step].label}… ${elapsed}s` : "Generate polish kit"}
           </button>
         </form>
 
         {loading && (
           <ol className="mt-4 grid gap-1.5 text-sm">
-            {STEPS[mode].map((s, i) => (
+            {steps.map(({ label: s }, i) => (
               <li key={s} className={`flex items-center gap-2 transition ${i <= step ? "text-fg" : "text-muted/50"}`}>
                 {i < step ? <Icon.check className="size-4 text-emerald-500" />
                   : i === step ? <span className="size-4 grid place-items-center"><span className="size-2 animate-ping rounded-full bg-accent-2" /></span>
@@ -191,7 +251,13 @@ export default function Home() {
                 {s}
               </li>
             ))}
-            <li className="mt-1 text-xs text-muted">Runs on your machine — can take 1–5 minutes depending on model and hardware.</li>
+            <li className="mt-1 flex items-center justify-between gap-3 text-xs text-muted">
+              <span>Runs on your machine — usually 1–3 minutes. Results appear as soon as they&apos;re ready.</span>
+              <button type="button" onClick={() => abortRef.current?.abort()}
+                className="rounded-lg border border-card-border px-2.5 py-1 font-medium transition hover:border-red-500/50 hover:text-red-500">
+                Cancel
+              </button>
+            </li>
           </ol>
         )}
 
@@ -202,7 +268,7 @@ export default function Home() {
         )}
       </Card>
 
-      {data && <Results polish={data.polish} repoName={data.repo?.fullName} />}
+      {data && <Results polish={{ ...data.meta, readme: data.readme }} repoName={data.repo?.fullName} streaming={!data.done} />}
 
       {!data && !loading && (
         <section className="mx-auto mt-16 grid max-w-4xl gap-4 sm:grid-cols-3">

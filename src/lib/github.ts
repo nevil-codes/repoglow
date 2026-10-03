@@ -1,3 +1,5 @@
+import { describeTooling, detectTooling, parseDependencies } from "./stack";
+
 const API = "https://api.github.com";
 
 export class GitHubError extends Error {
@@ -89,9 +91,19 @@ export type RepoFacts = {
   npm: string | null;
   pypi: string | null;
   crate: string | null;
+  /** Lowercased dependency names from all manifests. */
+  dependencies: string[];
+  /** Roles already covered, e.g. { "test runner": "ava" }. */
+  tooling: Record<string, string>;
 };
 
-export type RepoDigest = { meta: RepoMeta; facts: RepoFacts; text: string };
+export type RepoDigest = {
+  meta: RepoMeta;
+  facts: RepoFacts;
+  text: string;
+  /** Raw manifest contents, used to verify version claims. */
+  manifestText: string;
+};
 
 /** Fetch enough of a public repo for the model to understand it. */
 export async function digestRepo(input: string): Promise<RepoDigest> {
@@ -130,6 +142,12 @@ export async function digestRepo(input: string): Promise<RepoDigest> {
     used += body.length;
   }
 
+  const selfName =
+    npmName(manifests.find(([p]) => p === "package.json")?.[1] ?? "") ??
+    manifests.find(([p]) => p === "pyproject.toml" || p === "Cargo.toml")?.[1].match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1];
+  const dependencies = parseDependencies(manifests, selfName ?? repo);
+  const tooling = detectTooling(dependencies);
+
   const langTotal = Object.values(languages).reduce((a, b) => a + b, 0) || 1;
   const langLine = Object.entries(languages)
     .map(([l, n]) => `${l} ${((n / langTotal) * 100).toFixed(1)}%`)
@@ -144,6 +162,7 @@ export async function digestRepo(input: string): Promise<RepoDigest> {
     `License: ${meta.license?.spdx_id ?? "(none)"}`,
     `Current topics: ${meta.topics.join(", ") || "(none)"}`,
     `Languages: ${langLine || "(unknown)"}`,
+    `Existing tooling (do not suggest replacing): ${describeTooling(tooling)}`,
     "",
     `## File tree (${files.length} files${files.length > TREE_LIMIT || tree.truncated ? ", truncated" : ""})`,
     files.slice(0, TREE_LIMIT).join("\n"),
@@ -164,9 +183,11 @@ export async function digestRepo(input: string): Promise<RepoDigest> {
     npm: npmName(manifest("package.json")),
     pypi: manifest("pyproject.toml").match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1] ?? null,
     crate: manifest("Cargo.toml").match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1] ?? null,
+    dependencies,
+    tooling,
   };
 
-  return { meta, facts, text: parts.join("\n") };
+  return { meta, facts, text: parts.join("\n"), manifestText: manifests.map(([, body]) => body).join("\n") };
 }
 
 function npmName(pkgJson: string): string | null {

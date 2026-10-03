@@ -132,3 +132,8 @@ body {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: none; }
 }
+
+.markdown details { border: 1px solid var(--card-border); border-radius: 10px; padding: 0.6em 1em; }
+.markdown details[open] summary { margin-bottom: 0.4em; }
+.markdown p[align="center"], .markdown div[align="center"] { text-align: center; }
+.markdown div[align="center"] img, .markdown p[align="center"] img { margin: 0 2px; }
