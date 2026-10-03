@@ -63,8 +63,8 @@ const SOURCE_EXT = /\.(ts|tsx|js|jsx|py|go|rs|java|kt|rb|php|swift|dart|c|cpp|h|
 const SKIP_DIR = /(^|\/)(node_modules|dist|build|vendor|\.next|target|__pycache__|\.venv|coverage|test|tests|__tests__)\//;
 
 const TREE_LIMIT = 400;
-const FILE_BUDGET = 60_000; // chars of source to send
-const PER_FILE = 6_000;
+const FILE_BUDGET = 30_000; // chars of source to send — sized for a 32K-token local context
+const PER_FILE = 4_000;
 
 type Tree = { tree: { path: string; type: string; size?: number }[]; truncated: boolean };
 type RepoMeta = {
@@ -79,9 +79,21 @@ type RepoMeta = {
   html_url: string;
 };
 
-export type RepoDigest = { meta: RepoMeta; text: string };
+/** Hard facts used to build badges and links in code instead of trusting the model. */
+export type RepoFacts = {
+  owner: string;
+  repo: string;
+  url: string;
+  license: string | null;
+  workflow: string | null;
+  npm: string | null;
+  pypi: string | null;
+  crate: string | null;
+};
 
-/** Fetch enough of a public repo for Claude to understand it. */
+export type RepoDigest = { meta: RepoMeta; facts: RepoFacts; text: string };
+
+/** Fetch enough of a public repo for the model to understand it. */
 export async function digestRepo(input: string): Promise<RepoDigest> {
   const { owner, repo } = parseRepo(input);
   const base = `/repos/${owner}/${repo}`;
@@ -137,12 +149,33 @@ export async function digestRepo(input: string): Promise<RepoDigest> {
     files.slice(0, TREE_LIMIT).join("\n"),
     "",
     "## Existing README",
-    readme ? `<existing_readme>\n${readme.slice(0, 15_000)}\n</existing_readme>` : "(no README)",
+    readme ? `<existing_readme>\n${readme.slice(0, 10_000)}\n</existing_readme>` : "(no README)",
     ...manifests.flatMap(([p, body]) => ["", `## ${p}`, "```", body.slice(0, 8_000), "```"]),
     ...sources.flatMap(([p, body]) => ["", `## ${p}`, "```", body, "```"]),
   ];
 
-  return { meta, text: parts.join("\n") };
+  const manifest = (name: string) => manifests.find(([p]) => p === name)?.[1] ?? "";
+  const facts: RepoFacts = {
+    owner,
+    repo,
+    url: meta.html_url,
+    license: meta.license?.spdx_id && meta.license.spdx_id !== "NOASSERTION" ? meta.license.spdx_id : null,
+    workflow: files.find((f) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(f))?.split("/").pop() ?? null,
+    npm: npmName(manifest("package.json")),
+    pypi: manifest("pyproject.toml").match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1] ?? null,
+    crate: manifest("Cargo.toml").match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1] ?? null,
+  };
+
+  return { meta, facts, text: parts.join("\n") };
+}
+
+function npmName(pkgJson: string): string | null {
+  try {
+    const pkg = JSON.parse(pkgJson);
+    return pkg.private || typeof pkg.name !== "string" ? null : pkg.name;
+  } catch {
+    return null;
+  }
 }
 
 function score(path: string) {

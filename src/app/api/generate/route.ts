@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { GenerateRequest } from "@/lib/schema";
 import { digestRepo, GitHubError } from "@/lib/github";
-import { buildUserPrompt } from "@/lib/prompt";
-import { generatePolish, GenerationError } from "@/lib/claude";
+import { generatePolish, GenerationError } from "@/lib/llm";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -17,7 +16,7 @@ export async function POST(req: Request) {
 
   try {
     const digest = input.mode === "repo" ? await digestRepo(input.repoUrl!) : undefined;
-    const polish = await generatePolish(buildUserPrompt(input, digest?.text));
+    const polish = await generatePolish(input, digest);
     return NextResponse.json({
       polish,
       repo: digest

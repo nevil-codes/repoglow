@@ -6,8 +6,9 @@ Thanks for wanting to make RepoGlow better! ✨
 
 1. Fork and clone the repo.
 2. `npm install`
-3. `cp .env.example .env.local` and add your `ANTHROPIC_API_KEY` (and optionally `GITHUB_TOKEN`).
-4. `npm run dev` and open http://localhost:3000.
+3. Install [Ollama](https://ollama.com) and pull a model: `ollama pull gpt-oss:20b`.
+4. `cp .env.example .env.local` (optionally set `OLLAMA_MODEL` and `GITHUB_TOKEN`).
+5. `npm run dev` and open http://localhost:3000.
 
 ## Making changes
 

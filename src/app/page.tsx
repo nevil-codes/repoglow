@@ -98,7 +98,7 @@ export default function Home() {
 
       <section className="pt-10 text-center sm:pt-16">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-card-border bg-card px-3 py-1 text-xs font-medium text-muted backdrop-blur">
-          <Icon.sparkle className="size-3 text-accent-2" /> Powered by Claude
+          <Icon.sparkle className="size-3 text-accent-2" /> Runs on local AI · Ollama
         </span>
         <h1 className="mx-auto mt-5 max-w-3xl text-4xl font-extrabold tracking-tight sm:text-6xl">
           Make your repo <span className="text-gradient">impossible to scroll past</span>
@@ -191,7 +191,7 @@ export default function Home() {
                 {s}
               </li>
             ))}
-            <li className="mt-1 text-xs text-muted">Usually takes 30–90 seconds.</li>
+            <li className="mt-1 text-xs text-muted">Runs on your machine — can take 1–5 minutes depending on model and hardware.</li>
           </ol>
         )}
 
@@ -221,7 +221,7 @@ export default function Home() {
       )}
 
       <footer className="mt-20 text-center text-xs text-muted">
-        Built with Next.js & Claude · Your code is read via the public GitHub API and never stored.
+        Built with Next.js & Ollama · Repos are read via the public GitHub API; generation runs locally and nothing is stored.
       </footer>
     </main>
   );

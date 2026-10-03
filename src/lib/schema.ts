@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-// What Claude returns. Length/count limits live in descriptions (and are
-// enforced again in the prompt) because structured outputs only guarantee shape.
+// What the model returns. Length/count limits live in descriptions (and are
+// enforced again in the prompt) because JSON-schema output only guarantees shape.
 export const RepoPolish = z.object({
   names: z
     .array(
@@ -54,6 +54,10 @@ export const RepoPolish = z.object({
 });
 
 export type RepoPolish = z.infer<typeof RepoPolish>;
+
+// First call returns everything except the README, which is generated separately as plain markdown.
+export const PolishMeta = RepoPolish.omit({ readme: true });
+export type PolishMeta = z.infer<typeof PolishMeta>;
 
 export const Tone = z.enum(["professional", "playful", "minimal", "bold"]);
 export type Tone = z.infer<typeof Tone>;
