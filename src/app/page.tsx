@@ -268,7 +268,7 @@ export default function Home() {
         )}
       </Card>
 
-      {data && <Results polish={{ ...data.meta, readme: data.readme }} repoName={data.repo?.fullName} streaming={!data.done} />}
+      {data && <Results key={startedAt} polish={{ ...data.meta, readme: data.readme }} repoName={data.repo?.fullName} streaming={!data.done} />}
 
       {!data && !loading && (
         <section className="mx-auto mt-16 grid max-w-4xl gap-4 sm:grid-cols-3">

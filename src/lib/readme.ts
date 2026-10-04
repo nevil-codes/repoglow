@@ -34,7 +34,12 @@ export function buildBadges(facts: RepoFacts | undefined, modelBadges: RepoPolis
   const seen = new Set(out.map((b) => b.label.toLowerCase()));
   for (const b of modelBadges) {
     const ok = /https:\/\/img\.shields\.io\/badge\//.test(b.markdown) && !/[<>]|your-|owner\/repo/i.test(b.markdown);
-    if (!ok || seen.has(b.label.toLowerCase()) || !versionBacked(b.markdown, evidence)) continue;
+    // When real repo badges exist, the model's static license/CI/stars/version badges are duplicates (often stale).
+    const text = `${b.label} ${b.markdown}`;
+    const duplicateKind = facts && /licen[cs]e|stars|downloads|npm|pypi|crates|commit|version|release/i.test(text);
+    // A static badge can't know build/test status, so "build: passing" is always a fabrication.
+    const fakeStatus = /\bci\b|build|passing|coverage|tests?\b/i.test(text);
+    if (!ok || duplicateKind || fakeStatus || seen.has(b.label.toLowerCase()) || !versionBacked(b.markdown, evidence)) continue;
     seen.add(b.label.toLowerCase());
     out.push({ label: b.label, markdown: b.markdown.replace(/\((https:\/\/img\.shields\.io\/badge\/[^)\s]+)\)/, (_, url: string) => `(${withStyle(url)})`) });
   }

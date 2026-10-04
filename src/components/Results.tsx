@@ -7,12 +7,16 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import type { RepoPolish } from "@/lib/schema";
 import { Card, CopyButton, Icon } from "./ui";
+import { ShipPanel } from "./ShipPanel";
 
 const TABS = ["README", "Names", "About & Topics", "Packages", "Badges", "Quick wins"] as const;
 type Tab = (typeof TABS)[number];
 
 export function Results({ polish, repoName, streaming = false }: { polish: RepoPolish; repoName?: string; streaming?: boolean }) {
   const [tab, setTab] = useState<Tab>("README");
+  // User edits to the README (raw view). The parent remounts this component for each new generation.
+  const [edited, setEdited] = useState<string | null>(null);
+  const readme = edited ?? polish.readme;
 
   return (
     <section className="mt-10 animate-[fadeUp_.5s_ease-out]">
@@ -47,13 +51,32 @@ export function Results({ polish, repoName, streaming = false }: { polish: RepoP
       </div>
 
       <div className="mt-4">
-        {tab === "README" && <ReadmePanel markdown={polish.readme} repoName={repoName} streaming={streaming} />}
+        {tab === "README" && (
+          <ReadmePanel
+            markdown={readme}
+            repoName={repoName}
+            streaming={streaming}
+            edited={edited !== null}
+            onEdit={setEdited}
+            onReset={() => setEdited(null)}
+          />
+        )}
         {tab === "Names" && <NamesPanel names={polish.names} />}
         {tab === "About & Topics" && <AboutPanel about={polish.aboutDescription} topics={polish.topics} />}
         {tab === "Packages" && <PackagesPanel packages={polish.packages} />}
         {tab === "Badges" && <BadgesPanel badges={polish.badges} />}
         {tab === "Quick wins" && <WinsPanel items={polish.improvements} />}
       </div>
+
+      {repoName && (
+        <ShipPanel
+          repo={repoName}
+          readme={readme}
+          aboutDescription={polish.aboutDescription}
+          topics={polish.topics}
+          disabled={streaming}
+        />
+      )}
     </section>
   );
 }
@@ -92,7 +115,21 @@ function Scorecard({ current, potential }: { current: number; potential: number 
   );
 }
 
-function ReadmePanel({ markdown, repoName, streaming }: { markdown: string; repoName?: string; streaming: boolean }) {
+function ReadmePanel({
+  markdown,
+  repoName,
+  streaming,
+  edited,
+  onEdit,
+  onReset,
+}: {
+  markdown: string;
+  repoName?: string;
+  streaming: boolean;
+  edited: boolean;
+  onEdit: (md: string) => void;
+  onReset: () => void;
+}) {
   const [view, setView] = useState<"preview" | "raw">("preview");
   const scrollRef = useRef<HTMLElement>(null);
   // Follow the text while it's being written, unless the user scrolled up to read.
@@ -112,6 +149,11 @@ function ReadmePanel({ markdown, repoName, streaming }: { markdown: string; repo
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-card-border px-4 py-2.5">
         <div className="flex items-center gap-2 text-sm text-muted">
           <span className="font-mono">{repoName ? `${repoName}/` : ""}README.md</span>
+          {edited && (
+            <button onClick={onReset} className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-600 hover:underline dark:text-amber-300" title="Discard your edits">
+              edited · reset
+            </button>
+          )}
           {streaming && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-2/10 px-2 py-0.5 text-xs text-accent-2">
               <span className="size-1.5 animate-pulse rounded-full bg-current" /> writing…
@@ -123,7 +165,7 @@ function ReadmePanel({ markdown, repoName, streaming }: { markdown: string; repo
             {(["preview", "raw"] as const).map((v) => (
               <button key={v} onClick={() => setView(v)}
                 className={`rounded-md px-2.5 py-1 capitalize ${view === v ? "bg-card-border font-semibold text-fg" : "text-muted"}`}>
-                {v}
+                {v === "raw" && !streaming ? "edit" : v}
               </button>
             ))}
           </div>
@@ -143,7 +185,17 @@ function ReadmePanel({ markdown, repoName, streaming }: { markdown: string; repo
           )}
         </article>
       ) : (
-        <pre ref={scrollRef as React.RefObject<HTMLPreElement>} className="max-h-[75vh] overflow-auto whitespace-pre-wrap p-5 font-mono text-[13px] leading-relaxed">{markdown}</pre>
+        streaming ? (
+          <pre ref={scrollRef as React.RefObject<HTMLPreElement>} className="max-h-[75vh] overflow-auto whitespace-pre-wrap p-5 font-mono text-[13px] leading-relaxed">{markdown}</pre>
+        ) : (
+          <textarea
+            value={markdown}
+            onChange={(e) => onEdit(e.target.value)}
+            spellCheck={false}
+            aria-label="Edit README markdown"
+            className="block h-[75vh] w-full resize-none bg-transparent p-5 font-mono text-[13px] leading-relaxed outline-none"
+          />
+        )
       )}
     </Card>
   );

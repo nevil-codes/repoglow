@@ -47,6 +47,7 @@ RepoGlow reads your actual code (file tree, manifests, entry points, existing RE
 | ✅ | **Quick wins** | Prioritized checklist: license, CI, templates, social preview, releases… |
 | 📊 | **Appeal score** | Before → after score so you know what moved the needle |
 | ⚡ | **Live streaming** | Names, topics and packages appear first, then watch the README being written |
+| 🚢 | **Ship to GitHub** | Edit the README, then open a pull request in one click (forks automatically if you can't push) and apply About & topics if you're an admin |
 | 🔍 | **Fact-checked** | Badges, versions and package picks are verified against your real manifests — no suggesting Jest when you use node:test |
 | 🎨 | **Tone & style** | Professional · Playful · Minimal · Bold, plus toggles for emoji, TOC and Mermaid diagrams |
 
@@ -100,7 +101,8 @@ Open [http://localhost:3000](http://localhost:3000) and paste a repo URL.
 | `OLLAMA_MODEL` | — | Model to use (default `gpt-oss:20b`) |
 | `OLLAMA_NUM_CTX` | — | Context window in tokens (default `32768`). Lower it if you run out of memory |
 | `OLLAMA_KEEP_ALIVE` | — | How long the model stays loaded after a request (default `30m`) |
-| `GITHUB_TOKEN` | — | Raises GitHub rate limit from 60 to 5,000 req/h. A fine-grained token with no extra scopes is enough |
+| `GITHUB_TOKEN` | — | Raises the GitHub rate limit from 60 to 5,000 req/h, and enables **Ship to GitHub** (see below) |
+| `REPOGLOW_ALLOW_REMOTE_WRITE` | — | Set to `true` to allow GitHub write actions when not on `localhost`. Leave unset unless you know you need it |
 
 > [!TIP]
 > Bigger models give noticeably better READMEs. `gpt-oss:20b` needs ~16 GB RAM; on smaller machines try `llama3.1:8b` and set `OLLAMA_NUM_CTX=16384`.
@@ -108,17 +110,39 @@ Open [http://localhost:3000](http://localhost:3000) and paste a repo URL.
 > [!NOTE]
 > Hitting `GitHub rate limit` errors while testing? Add a `GITHUB_TOKEN` — unauthenticated requests are capped at 60/hour per IP.
 
+### 🚢 Shipping to GitHub
+
+With a token in `.env.local`, every repo result gets an **Open PR** button. RepoGlow commits the README (including your edits) to a new `repoglow/readme-…` branch and opens a pull request with the suggested About and topics in the description. If you can't push to the repo, it forks it to your account first. Repo admins also get **Apply About & topics**.
+
+The quickest setup if you use the GitHub CLI:
+
+```bash
+echo "GITHUB_TOKEN=$(gh auth token)" >> .env.local
+```
+
+Or create a token yourself:
+
+| Token type | Permissions needed |
+|---|---|
+| Classic | `public_repo` (or `repo` for private repos) |
+| Fine-grained | Contents, Pull requests: read & write · Administration: read & write (only for *Apply About & topics*). Fine-grained tokens only work on repos you own |
+
+> [!WARNING]
+> The token acts as **you**. Write actions are only accepted from RepoGlow's own page (same-origin JSON requests) running on `localhost`, so other sites or other people on your network can't use it. Don't set `REPOGLOW_ALLOW_REMOTE_WRITE=true` on a deployment that others can reach.
+
 ## 🗂️ Project structure
 
 ```
 src/
 ├── app/
 │   ├── api/generate/route.ts   # Streaming POST endpoint: validate → digest → Ollama → NDJSON
+│   ├── api/github/*/route.ts   # status · pr · about (token-backed GitHub actions)
 │   ├── page.tsx                # Landing page + generator form
 │   ├── layout.tsx              # Fonts, theme bootstrap, aurora background
 │   └── globals.css             # Design tokens, glass + glow styles, markdown preview
 ├── components/
-│   ├── Results.tsx             # Tabs: README · Names · About & Topics · Packages · Badges · Quick wins
+│   ├── Results.tsx             # Tabs: README · Names · About & Topics · Packages · Badges · Quick wins; editable README
+│   ├── ShipPanel.tsx           # Open PR / apply About & topics
 │   └── ui.tsx                  # Card, CopyButton, ThemeToggle, icons
 └── lib/
     ├── github.ts               # Repo digest via GitHub REST API
@@ -127,6 +151,8 @@ src/
     ├── readme.ts               # Badge builder, TOC generator, README cleanup
     ├── stack.ts                # Dependency parsing, tooling detection, package filtering
     ├── events.ts               # Streaming event types shared by API and UI
+    ├── github-write.ts         # Branch, commit, fork, PR, About & topics
+    ├── guard.ts                # Localhost + same-origin guard for write routes
     └── schema.ts               # Zod schemas for request + polish kit
 ```
 
@@ -145,7 +171,8 @@ src/
 - [x] Light / dark theme
 - [x] Live streaming of results
 - [x] Manifest-based fact checking for badges and packages
-- [ ] "Open PR with this README" via GitHub OAuth
+- [x] Open a PR with the README (token-based, auto-fork)
+- [ ] Sign in with GitHub (OAuth) for multi-user deployments
 - [ ] Private repo support
 - [ ] Social preview image generator (1280×640)
 - [ ] One-click deploy to Vercel
