@@ -31,7 +31,9 @@ Great code gets ignored when the repo looks like an afterthought. A blank README
 RepoGlow reads your actual code (file tree, manifests, entry points, existing README) and hands back a complete **polish kit** grounded in what the project really does. No GitHub repo yet? Just describe the idea.
 
 <div align="center">
-  <img src="docs/screenshot.png" alt="RepoGlow screenshot" width="90%" />
+  <img src="docs/demo.gif" alt="RepoGlow demo: paste a repo URL, names and topics appear, then the README streams in" width="90%" />
+  <br />
+  <sub>Real run on <code>sindresorhus/is</code> with gpt-oss:20b on an M4 Pro — waiting time sped up.</sub>
 </div>
 
 ## 🚀 Features
