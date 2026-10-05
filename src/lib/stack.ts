@@ -25,12 +25,14 @@ export function parseDependencies(manifests: Manifests, selfName?: string | null
         if (/\bdeno\s+test\b/.test(scripts)) add("deno test");
       } catch {}
     } else if (path === "requirements.txt") {
-      body.split("\n").forEach((l) => add(l.match(/^\s*([A-Za-z0-9_.-]+)/)?.[1]));
+      // Skip options like -e / -r / --index-url; names start with a letter or digit.
+      body.split("\n").forEach((l) => add(l.match(/^\s*([A-Za-z0-9][A-Za-z0-9_.-]*)/)?.[1]));
     } else if (path === "pyproject.toml") {
       for (const [header, content] of tomlSections(body)) {
         // PEP 621 `dependencies = [...]` inside [project]; every list in optional-dependencies / dependency-groups.
         if (header === "project") {
-          const list = content.match(/^dependencies\s*=\s*\[([\s\S]*?)\]/m)?.[1] ?? "";
+          // The list ends at a "]" closing a line — not at the "]" of an extra like "pkg[extra]>=1".
+          const list = content.match(/^dependencies\s*=\s*\[([\s\S]*?)\]\s*$/m)?.[1] ?? "";
           pep508(list).forEach(add);
         } else if (header === "project.optional-dependencies" || header === "dependency-groups") {
           pep508(content.replace(/\{\s*include-group\s*=\s*["'][^"']*["']\s*\}/g, "")).forEach(add);

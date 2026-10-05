@@ -182,7 +182,7 @@ src/
 Contributions are welcome! Read [CONTRIBUTING.md](CONTRIBUTING.md), then open an issue or PR.
 
 ```bash
-npm run lint && npx tsc --noEmit && npm run build
+npm run lint && npx tsc --noEmit && npm test && npm run build
 ```
 
 ## 📄 License

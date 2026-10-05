@@ -16,6 +16,7 @@ Thanks for wanting to make RepoGlow better! ✨
 - Keep PRs focused — one feature or fix per PR.
 - Match the existing style (TypeScript, Tailwind utility classes, small components).
 - If you change the polish-kit shape, update `src/lib/schema.ts` **and** the UI in `src/components/Results.tsx`.
+- Post-processing and stack detection (`src/lib/readme.ts`, `src/lib/stack.ts`) have unit tests — when you fix a bad model output, add it as a test case.
 - Prompt changes live in `src/lib/prompt.ts`. Keep `SYSTEM_PROMPT` stable text (it's prompt-cached); put per-request details in `buildUserPrompt`.
 
 ## Before opening a PR
@@ -23,6 +24,7 @@ Thanks for wanting to make RepoGlow better! ✨
 ```bash
 npm run lint
 npx tsc --noEmit
+npm test
 npm run build
 ```
 

@@ -6,5 +6,6 @@
 
 - [ ] `npm run lint`
 - [ ] `npx tsc --noEmit`
+- [ ] `npm test`
 - [ ] `npm run build`
 - [ ] Screenshot attached (UI changes)
