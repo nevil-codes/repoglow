@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.github
+docs
+*.md
+!README.md
+.env*
+!.env.example
+*.tsbuildinfo
+*.test.ts
+coverage

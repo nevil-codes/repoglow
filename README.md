@@ -77,7 +77,27 @@ flowchart LR
 
 ## ⚡ Quick start
 
-**Prerequisites:** Node.js 20+ and [Ollama](https://ollama.com) running locally.
+### 🐳 With Docker (one command)
+
+```bash
+git clone https://github.com/nevil-codes/repoglow.git
+cd repoglow
+docker compose up
+```
+
+This starts RepoGlow plus a bundled Ollama and downloads the model on first run (~13 GB). Open [http://localhost:3000](http://localhost:3000).
+
+| Your machine | Command |
+|---|---|
+| Linux + NVIDIA GPU | `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up` |
+| macOS | Docker can't use the Apple GPU, so run Ollama natively (`ollama pull gpt-oss:20b`) and start only the app: `docker compose -f docker-compose.yml -f docker-compose.mac.yml up app` |
+| Anything else | `docker compose up` (CPU — works, but slow on a 20B model) |
+
+Pass settings through the environment, e.g. `GITHUB_TOKEN=$(gh auth token) OLLAMA_MODEL=llama3.1:8b docker compose up`.
+
+### 🛠️ From source
+
+**Prerequisites:** Node.js 22+ and [Ollama](https://ollama.com) running locally.
 
 ```bash
 ollama pull gpt-oss:20b   # or qwen3, llama3.1:8b, …
@@ -175,6 +195,7 @@ src/
 - [ ] Sign in with GitHub (OAuth) for multi-user deployments
 - [ ] Private repo support
 - [ ] Social preview image generator (1280×640)
+- [x] Docker Compose setup (CPU, NVIDIA GPU, or native Ollama on macOS)
 - [ ] One-click deploy to Vercel
 
 ## 🤝 Contributing

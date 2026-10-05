@@ -20,3 +20,26 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm test
       - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose files
+        run: |
+          docker compose -f docker-compose.yml config -q
+          docker compose -f docker-compose.yml -f docker-compose.gpu.yml config -q
+          docker compose -f docker-compose.yml -f docker-compose.mac.yml config -q
+      - name: Build image
+        run: docker build -t repoglow:ci .
+      - name: Smoke test container
+        run: |
+          docker run -d --name rg -p 3000:3000 repoglow:ci
+          for i in $(seq 1 30); do curl -sf localhost:3000 >/dev/null && break; sleep 1; done
+          curl -sf localhost:3000 | grep -q "<title>RepoGlow"
+          curl -sf localhost:3000/logo.svg >/dev/null
+          curl -s -XPOST localhost:3000/api/generate -H 'content-type: application/json' -d '{"mode":"idea","description":"x"}' | grep -q "at least 10 characters"
+          curl -s localhost:3000/api/github/status?repo=a/b | grep -q '"configured":false'
+      - name: Container logs
+        if: always()
+        run: docker logs rg || true

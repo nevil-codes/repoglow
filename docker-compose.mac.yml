@@ -1,0 +1,8 @@
+# macOS: use Ollama running natively on the host (Metal GPU) instead of the bundled CPU-only container.
+#   ollama pull gpt-oss:20b
+#   docker compose -f docker-compose.yml -f docker-compose.mac.yml up app
+services:
+  app:
+    environment:
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+    depends_on: !reset {}
